@@ -9,6 +9,7 @@ import asyncio
 from datetime import datetime, timedelta
 
 from ..core.base_agent import BaseAgent, ManagerAgent, AgentRole, MessageType
+from ..core.memory_store import SmartMemoryMixin
 
 class BrandManagerAgent(BaseAgent):
     """Brand consistency and messaging specialist"""
@@ -166,8 +167,8 @@ class BrandManagerAgent(BaseAgent):
             "brand_voice_optimization"
         ]
 
-class SocialMediaManagerAgent(BaseAgent):
-    """Social media strategy and community management specialist"""
+class SocialMediaManagerAgent(SmartMemoryMixin, BaseAgent):
+    """Social media strategy and community management specialist with memory"""
     
     def __init__(self, agent_id: str, manager_id: str):
         super().__init__(
@@ -203,13 +204,32 @@ class SocialMediaManagerAgent(BaseAgent):
             return await self._general_social_management(task_data)
     
     async def _create_social_content(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Create platform-optimized social media content"""
+        """Create platform-optimized social media content with performance memory"""
         platform = task_data.get("platform", "linkedin")
         content_type = task_data.get("content_type", "post")
         topic = task_data.get("topic", "business growth")
         target_audience = task_data.get("target_audience", "startup founders")
         
         platform_config = self.platforms.get(platform, self.platforms["linkedin"])
+        
+        # Get high-performing content patterns from memory
+        performance_memories = self.recall("content_performance", limit=5)
+        high_performing_patterns = []
+        
+        if performance_memories:
+            for memory in performance_memories:
+                content_data = memory.content
+                if (content_data.get("platform") == platform and 
+                    content_data.get("engagement_score", 0) > 7):
+                    high_performing_patterns.append({
+                        "format": content_data.get("content_format"),
+                        "hooks": content_data.get("successful_hooks", []),
+                        "hashtags": content_data.get("successful_hashtags", [])
+                    })
+        
+        learning_context = ""
+        if high_performing_patterns:
+            learning_context = f"\n\nHigh-Performing Patterns:\n{json.dumps(high_performing_patterns[:3], indent=2)}"
         
         prompt = f"""
         Create {content_type} for {platform}:
@@ -218,6 +238,7 @@ class SocialMediaManagerAgent(BaseAgent):
         Target Audience: {target_audience}
         Platform: {platform}
         Platform Guidelines: {json.dumps(platform_config)}
+        {learning_context}
         
         Create content optimized for {platform} including:
         - main_text: primary content text
@@ -226,6 +247,7 @@ class SocialMediaManagerAgent(BaseAgent):
         - posting_time: optimal posting time
         - engagement_hooks: elements to drive interaction
         
+        If learning patterns are available, incorporate successful elements.
         Make it engaging, valuable, and platform-appropriate.
         """
         
@@ -241,12 +263,28 @@ class SocialMediaManagerAgent(BaseAgent):
                 "engagement_hooks": ["Question", "Statistics", "Personal story"]
             }
         
+        content_id = f"social_{platform}_{int(datetime.now().timestamp())}"
+        
+        # Remember this content creation for future learning
+        self.remember("content_creation", {
+            "content_id": content_id,
+            "platform": platform,
+            "content_type": content_type,
+            "topic": topic,
+            "target_audience": target_audience,
+            "content_format": content.get("main_text", "")[:100],
+            "hashtags_used": content.get("hashtags", []),
+            "engagement_hooks_used": content.get("engagement_hooks", [])
+        }, {"creation_type": "social_content"})
+        
         return {
+            "content_id": content_id,
             "platform": platform,
             "content_type": content_type,
             "content": content,
             "brand_aligned": True,
             "estimated_reach": self._estimate_reach(platform, content),
+            "learning_applied": len(high_performing_patterns) > 0,
             "timestamp": datetime.now().isoformat()
         }
     
@@ -410,6 +448,51 @@ class SocialMediaManagerAgent(BaseAgent):
             "growth_rate": "steady"
         }
     
+    async def track_content_performance(self, content_id: str, performance_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Track and learn from content performance"""
+        platform = performance_data.get("platform", "unknown")
+        engagement_rate = performance_data.get("engagement_rate", 0)
+        reach = performance_data.get("reach", 0)
+        clicks = performance_data.get("clicks", 0)
+        
+        # Calculate engagement score (0-10 scale)
+        engagement_score = min(10, engagement_rate * 100 / 5)  # Normalize to 0-10
+        
+        # Get original content creation memory
+        creation_memories = self.search_memory(content_id, "content_creation")
+        content_format = ""
+        successful_hooks = []
+        successful_hashtags = []
+        
+        if creation_memories:
+            creation_data = creation_memories[0].content
+            content_format = creation_data.get("content_format", "")
+            if engagement_score > 7:  # High performing content
+                successful_hooks = creation_data.get("engagement_hooks_used", [])
+                successful_hashtags = creation_data.get("hashtags_used", [])
+        
+        # Remember performance for future optimization
+        self.remember("content_performance", {
+            "content_id": content_id,
+            "platform": platform,
+            "engagement_score": engagement_score,
+            "engagement_rate": engagement_rate,
+            "reach": reach,
+            "clicks": clicks,
+            "content_format": content_format,
+            "successful_hooks": successful_hooks,
+            "successful_hashtags": successful_hashtags,
+            "performance_category": "high" if engagement_score > 7 else "medium" if engagement_score > 4 else "low"
+        }, {"tracking_type": "performance_analysis"})
+        
+        return {
+            "content_id": content_id,
+            "engagement_score": engagement_score,
+            "performance_tracked": True,
+            "learning_updated": engagement_score > 7,
+            "timestamp": datetime.now().isoformat()
+        }
+    
     def get_capabilities(self) -> List[str]:
         return [
             "social_media_content_creation",
@@ -417,11 +500,12 @@ class SocialMediaManagerAgent(BaseAgent):
             "engagement_optimization",
             "social_media_analytics",
             "crisis_management",
-            "multi_platform_strategy"
+            "multi_platform_strategy",
+            "content_performance_learning"
         ]
 
-class ContentCreatorAgent(BaseAgent):
-    """Multi-channel content creation specialist"""
+class ContentCreatorAgent(SmartMemoryMixin, BaseAgent):
+    """Multi-channel content creation specialist with memory"""
     
     def __init__(self, agent_id: str, manager_id: str):
         super().__init__(
@@ -458,7 +542,7 @@ class ContentCreatorAgent(BaseAgent):
             return await self._general_content_management(task_data)
     
     async def _create_content(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Create specific content piece"""
+        """Create specific content piece with performance learning"""
         content_type = task_data.get("content_type", "blog_post")
         topic = task_data.get("topic", "AI for business growth")
         target_audience = task_data.get("target_audience", "startup founders")
@@ -466,6 +550,25 @@ class ContentCreatorAgent(BaseAgent):
         brand_voice = task_data.get("brand_voice", "professional yet approachable")
         
         content_config = self.content_types.get(content_type, self.content_types["blog_post"])
+        
+        # Get high-performing content patterns from memory
+        performance_memories = self.recall("content_performance", limit=5)
+        successful_patterns = []
+        
+        if performance_memories:
+            for memory in performance_memories:
+                perf_data = memory.content
+                if (perf_data.get("content_type") == content_type and 
+                    perf_data.get("performance_score", 0) > 7):
+                    successful_patterns.append({
+                        "topic_approach": perf_data.get("topic_approach", ""),
+                        "structure_elements": perf_data.get("successful_structure", []),
+                        "keywords": perf_data.get("high_performing_keywords", [])
+                    })
+        
+        learning_context = ""
+        if successful_patterns:
+            learning_context = f"\n\nHigh-Performing Content Patterns:\n{json.dumps(successful_patterns[:3], indent=2)}"
         
         prompt = f"""
         Create {content_type} content:
@@ -475,6 +578,7 @@ class ContentCreatorAgent(BaseAgent):
         Objectives: {json.dumps(objectives)}
         Brand Voice: {brand_voice}
         Content Specifications: {json.dumps(content_config)}
+        {learning_context}
         
         Create comprehensive content including:
         - headline: compelling headline/title
@@ -485,6 +589,7 @@ class ContentCreatorAgent(BaseAgent):
         - seo_keywords: relevant keywords for SEO
         - meta_description: SEO meta description
         
+        If learning patterns are available, incorporate successful elements.
         Make it valuable, engaging, and aligned with objectives.
         """
         
@@ -502,13 +607,29 @@ class ContentCreatorAgent(BaseAgent):
                 "meta_description": f"Learn how {topic} can drive business growth and competitive advantage."
             }
         
+        content_id = f"{content_type}_{int(datetime.now().timestamp())}"
+        
+        # Remember this content creation for future learning
+        self.remember("content_creation", {
+            "content_id": content_id,
+            "content_type": content_type,
+            "topic": topic,
+            "target_audience": target_audience,
+            "topic_approach": content.get("headline", "")[:100],
+            "structure_used": content.get("key_takeaways", []),
+            "keywords_used": content.get("seo_keywords", []),
+            "objectives": objectives
+        }, {"creation_type": "long_form_content"})
+        
         return {
+            "content_id": content_id,
             "content_type": content_type,
             "topic": topic,
             "content": content,
             "word_count": self._estimate_word_count(content),
             "brand_aligned": True,
             "seo_optimized": True,
+            "learning_applied": len(successful_patterns) > 0,
             "timestamp": datetime.now().isoformat()
         }
     
@@ -698,6 +819,61 @@ class ContentCreatorAgent(BaseAgent):
             "performance_trending": "positive"
         }
     
+    async def track_content_performance(self, content_id: str, performance_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Track and learn from long-form content performance"""
+        content_type = performance_data.get("content_type", "unknown")
+        page_views = performance_data.get("page_views", 0)
+        time_on_page = performance_data.get("time_on_page", 0)
+        bounce_rate = performance_data.get("bounce_rate", 0)
+        conversions = performance_data.get("conversions", 0)
+        
+        # Calculate performance score (0-10 scale)
+        performance_score = 0
+        if page_views > 0:
+            performance_score += min(3, page_views / 1000 * 3)  # Views component
+        if time_on_page > 0:
+            performance_score += min(3, time_on_page / 180 * 3)  # Time component (3 min = max)
+        if bounce_rate < 70:
+            performance_score += 2  # Low bounce rate bonus
+        if conversions > 0:
+            performance_score += min(2, conversions / 10 * 2)  # Conversion component
+        
+        # Get original content creation memory
+        creation_memories = self.search_memory(content_id, "content_creation")
+        successful_structure = []
+        high_performing_keywords = []
+        topic_approach = ""
+        
+        if creation_memories:
+            creation_data = creation_memories[0].content
+            topic_approach = creation_data.get("topic_approach", "")
+            if performance_score > 7:  # High performing content
+                successful_structure = creation_data.get("structure_used", [])
+                high_performing_keywords = creation_data.get("keywords_used", [])
+        
+        # Remember performance for future optimization
+        self.remember("content_performance", {
+            "content_id": content_id,
+            "content_type": content_type,
+            "performance_score": performance_score,
+            "page_views": page_views,
+            "time_on_page": time_on_page,
+            "bounce_rate": bounce_rate,
+            "conversions": conversions,
+            "topic_approach": topic_approach,
+            "successful_structure": successful_structure,
+            "high_performing_keywords": high_performing_keywords,
+            "performance_category": "high" if performance_score > 7 else "medium" if performance_score > 4 else "low"
+        }, {"tracking_type": "content_performance_analysis"})
+        
+        return {
+            "content_id": content_id,
+            "performance_score": performance_score,
+            "performance_tracked": True,
+            "learning_updated": performance_score > 7,
+            "timestamp": datetime.now().isoformat()
+        }
+    
     def get_capabilities(self) -> List[str]:
         return [
             "multi_channel_content_creation",
@@ -705,7 +881,8 @@ class ContentCreatorAgent(BaseAgent):
             "seo_optimization",
             "content_calendar_planning",
             "performance_optimization",
-            "brand_voice_consistency"
+            "brand_voice_consistency",
+            "content_performance_learning"
         ]
 
 class MarketingExcellenceManager(ManagerAgent):

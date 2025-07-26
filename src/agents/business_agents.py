@@ -12,9 +12,10 @@ from concurrent.futures import ThreadPoolExecutor
 import uuid
 
 from ..core.base_agent import BaseAgent, ManagerAgent, AgentRole, MessageType
+from ..core.memory_store import SmartMemoryMixin
 
-class CustomerSupportAgent(BaseAgent):
-    """24/7 Customer support specialist with intelligent inquiry routing"""
+class CustomerSupportAgent(SmartMemoryMixin, BaseAgent):
+    """24/7 Customer support specialist with intelligent inquiry routing and memory"""
     
     def __init__(self, agent_id: str, manager_id: str):
         super().__init__(
@@ -35,16 +36,19 @@ class CustomerSupportAgent(BaseAgent):
         }
     
     async def process_task(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Process customer support inquiry"""
+        """Process customer support inquiry with memory context"""
         inquiry_text = task_data.get("inquiry_text", "")
         customer_id = task_data.get("customer_id", "unknown")
         channel = task_data.get("channel", "email")
         
-        # Classify inquiry using Gemini
-        classification = await self._classify_inquiry(inquiry_text)
+        # Get customer history from memory
+        customer_history = self.get_entity_history(customer_id, "interaction", limit=5)
         
-        # Generate response using Gemini
-        response = await self._generate_response(inquiry_text, classification, customer_id)
+        # Classify inquiry using Gemini (with memory context)
+        classification = await self._classify_inquiry(inquiry_text, customer_history)
+        
+        # Generate response using Gemini (with memory context)
+        response = await self._generate_response(inquiry_text, classification, customer_id, customer_history)
         
         # Determine if escalation is needed
         needs_escalation = await self._check_escalation_needed(inquiry_text, classification)
@@ -56,8 +60,24 @@ class CustomerSupportAgent(BaseAgent):
             "channel": channel,
             "needs_escalation": needs_escalation,
             "sla_deadline": self._calculate_sla(classification["type"]),
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "previous_interactions": len(customer_history)
         }
+        
+        # Remember this interaction
+        self.remember("customer_interaction", {
+            "customer_id": customer_id,
+            "inquiry_text": inquiry_text[:200],  # Truncated for storage
+            "classification": classification,
+            "response_provided": True,
+            "escalated": needs_escalation,
+            "channel": channel,
+            "resolution_time": datetime.now().isoformat()
+        }, {"interaction_type": "support_inquiry"})
+        
+        # Update customer satisfaction if this is a follow-up
+        if customer_history:
+            await self._update_customer_satisfaction(customer_id, classification)
         
         # Escalate if needed
         if needs_escalation:
@@ -65,11 +85,21 @@ class CustomerSupportAgent(BaseAgent):
         
         return result
     
-    async def _classify_inquiry(self, inquiry_text: str) -> Dict[str, Any]:
-        """Classify customer inquiry using Gemini AI"""
+    async def _classify_inquiry(self, inquiry_text: str, customer_history: List = None) -> Dict[str, Any]:
+        """Classify customer inquiry using Gemini AI with memory context"""
+        
+        history_context = ""
+        if customer_history:
+            history_summary = []
+            for memory in customer_history[:3]:  # Last 3 interactions
+                content = memory.content
+                history_summary.append(f"- Previous issue: {content.get('inquiry_text', 'N/A')[:100]}")
+            history_context = f"\n\nCustomer History:\n" + "\n".join(history_summary)
+        
         prompt = f"""
         Classify this customer inquiry:
         "{inquiry_text}"
+        {history_context}
         
         Provide classification as JSON with:
         - type: one of [technical, billing, general, complaint]
@@ -77,6 +107,7 @@ class CustomerSupportAgent(BaseAgent):
         - sentiment: one of [positive, neutral, negative, angry]
         - keywords: list of relevant keywords
         - estimated_resolution_time: minutes needed
+        - is_follow_up: true if this relates to previous interactions
         """
         
         response = await self.use_gemini(prompt)
@@ -91,23 +122,34 @@ class CustomerSupportAgent(BaseAgent):
                 "estimated_resolution_time": 30
             }
     
-    async def _generate_response(self, inquiry: str, classification: Dict, customer_id: str) -> str:
-        """Generate personalized customer response"""
+    async def _generate_response(self, inquiry: str, classification: Dict, customer_id: str, customer_history: List = None) -> str:
+        """Generate personalized customer response with memory context"""
+        
+        history_context = ""
+        if customer_history:
+            history_summary = []
+            for memory in customer_history[:3]:  # Last 3 interactions
+                content = memory.content
+                history_summary.append(f"- Previous: {content.get('inquiry_text', 'N/A')[:100]} (Resolved: {content.get('response_provided', False)})")
+            history_context = f"\n\nCustomer History:\n" + "\n".join(history_summary)
+        
         prompt = f"""
         Generate a professional, helpful customer support response for:
         
         Customer Inquiry: "{inquiry}"
         Classification: {json.dumps(classification)}
         Customer ID: {customer_id}
+        {history_context}
         
         Response should be:
         - Professional and empathetic
         - Directly address the customer's concern
+        - Reference previous interactions if relevant
         - Provide clear next steps
         - Include appropriate contact information if needed
         """
         
-        return await self.use_gemini(prompt, {"customer_context": {"id": customer_id}})
+        return await self.use_gemini(prompt, {"customer_context": {"id": customer_id, "history": len(customer_history or [])}})
     
     async def _check_escalation_needed(self, inquiry: str, classification: Dict) -> bool:
         """Determine if inquiry needs escalation to human agent"""
@@ -140,6 +182,34 @@ class CustomerSupportAgent(BaseAgent):
         deadline = datetime.now() + timedelta(hours=sla_hours)
         return deadline.isoformat()
     
+    async def _update_customer_satisfaction(self, customer_id: str, classification: Dict):
+        """Update customer satisfaction tracking based on interaction"""
+        # Get previous satisfaction data
+        satisfaction_memories = self.search_memory("satisfaction", "customer_satisfaction")
+        
+        # Calculate satisfaction score based on classification and history
+        satisfaction_score = 5.0  # Default neutral
+        
+        if classification.get("sentiment") == "positive":
+            satisfaction_score = 4.5
+        elif classification.get("sentiment") == "negative":
+            satisfaction_score = 2.5
+        elif classification.get("sentiment") == "angry":
+            satisfaction_score = 1.5
+        
+        # Adjust based on resolution
+        if classification.get("is_follow_up"):
+            satisfaction_score -= 0.5  # Slight penalty for repeat issues
+        
+        # Remember satisfaction data
+        self.remember("customer_satisfaction", {
+            "customer_id": customer_id,
+            "satisfaction_score": satisfaction_score,
+            "interaction_sentiment": classification.get("sentiment", "neutral"),
+            "inquiry_type": classification.get("type", "general"),
+            "is_follow_up": classification.get("is_follow_up", False)
+        }, {"tracking_type": "satisfaction_metric"})
+    
     def get_capabilities(self) -> List[str]:
         return [
             "customer_inquiry_classification",
@@ -149,8 +219,8 @@ class CustomerSupportAgent(BaseAgent):
             "multi_channel_support"
         ]
 
-class SalesQualificationAgent(BaseAgent):
-    """Lead qualification and sales nurturing specialist"""
+class SalesQualificationAgent(SmartMemoryMixin, BaseAgent):
+    """Lead qualification and sales nurturing specialist with memory"""
     
     def __init__(self, agent_id: str, manager_id: str):
         super().__init__(
@@ -171,43 +241,75 @@ class SalesQualificationAgent(BaseAgent):
         }
     
     async def process_task(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Process lead qualification"""
+        """Process lead qualification with learning from previous interactions"""
         lead_data = task_data.get("lead_data", {})
+        lead_id = lead_data.get("id", "unknown")
         
-        # Perform BANT analysis
-        bant_score = await self._perform_bant_analysis(lead_data)
+        # Get lead history from memory
+        lead_history = self.get_entity_history(lead_id, "lead_interaction", limit=5)
         
-        # Calculate lead score
-        lead_score = self._calculate_lead_score(bant_score)
+        # Perform BANT analysis with historical context
+        bant_score = await self._perform_bant_analysis(lead_data, lead_history)
         
-        # Generate nurturing strategy
-        nurturing_plan = await self._create_nurturing_strategy(lead_data, bant_score, lead_score)
+        # Calculate lead score (enhanced with learning)
+        lead_score = self._calculate_lead_score(bant_score, lead_history)
+        
+        # Generate nurturing strategy based on what worked before
+        nurturing_plan = await self._create_nurturing_strategy(lead_data, bant_score, lead_score, lead_history)
         
         result = {
-            "lead_id": lead_data.get("id", "unknown"),
+            "lead_id": lead_id,
             "bant_analysis": bant_score,
             "lead_score": lead_score,
             "qualification_status": self._get_qualification_status(lead_score),
             "nurturing_plan": nurturing_plan,
             "next_action": self._determine_next_action(lead_score),
+            "previous_interactions": len(lead_history),
+            "engagement_trend": self._analyze_engagement_trend(lead_history),
             "timestamp": datetime.now().isoformat()
         }
         
+        # Remember this qualification
+        self.remember("lead_interaction", {
+            "lead_id": lead_id,
+            "entity_id": lead_id,
+            "bant_scores": bant_score,
+            "calculated_score": lead_score,
+            "qualification_status": result["qualification_status"],
+            "recommended_action": result["next_action"],
+            "lead_data_summary": str(lead_data)[:200]
+        }, {"interaction_type": "qualification"})
+        
+        # Update lead progression tracking
+        await self._track_lead_progression(lead_id, lead_score, lead_history)
+        
         return result
     
-    async def _perform_bant_analysis(self, lead_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Perform BANT (Budget, Authority, Need, Timeline) analysis"""
+    async def _perform_bant_analysis(self, lead_data: Dict[str, Any], lead_history: List = None) -> Dict[str, Any]:
+        """Perform BANT (Budget, Authority, Need, Timeline) analysis with historical context"""
+        
+        history_context = ""
+        if lead_history:
+            history_summary = []
+            for memory in lead_history[:3]:  # Last 3 interactions
+                content = memory.content
+                prev_scores = content.get('bant_scores', {})
+                history_summary.append(f"- Previous BANT: B:{prev_scores.get('budget', 'N/A')}, A:{prev_scores.get('authority', 'N/A')}, N:{prev_scores.get('need', 'N/A')}, T:{prev_scores.get('timeline', 'N/A')}")
+            history_context = f"\n\nLead History:\n" + "\n".join(history_summary)
+        
         prompt = f"""
         Analyze this lead for BANT qualification:
         
         Lead Data: {json.dumps(lead_data)}
+        {history_context}
         
         Provide BANT analysis as JSON with scores 1-10 for each:
         - budget: budget availability and fit
-        - authority: decision-making authority
+        - authority: decision-making authority  
         - need: urgency and fit for our solution
         - timeline: purchase timeline readiness
         - reasoning: explanation for each score
+        - trend_analysis: if historical data available, note improvements/declines
         """
         
         response = await self.use_gemini(prompt)
@@ -222,23 +324,46 @@ class SalesQualificationAgent(BaseAgent):
                 "reasoning": {"error": "Failed to analyze lead data"}
             }
     
-    def _calculate_lead_score(self, bant_analysis: Dict[str, Any]) -> float:
-        """Calculate weighted lead score"""
+    def _calculate_lead_score(self, bant_analysis: Dict[str, Any], lead_history: List = None) -> float:
+        """Calculate weighted lead score with historical learning"""
         total_score = 0
         for factor, weight in self.scoring_weights.items():
             score = bant_analysis.get(factor, 5)
             total_score += score * weight
         
-        return round(total_score * 10, 1)  # Convert to 0-100 scale
+        base_score = total_score * 10  # Convert to 0-100 scale
+        
+        # Apply historical adjustments
+        if lead_history:
+            engagement_trend = self._analyze_engagement_trend(lead_history)
+            if engagement_trend == "improving":
+                base_score += 5  # Bonus for improving engagement
+            elif engagement_trend == "declining":
+                base_score -= 3  # Penalty for declining engagement
+        
+        return round(max(0, min(100, base_score)), 1)  # Clamp to 0-100 range
     
-    async def _create_nurturing_strategy(self, lead_data: Dict, bant: Dict, score: float) -> Dict[str, Any]:
-        """Create personalized lead nurturing strategy"""
+    async def _create_nurturing_strategy(self, lead_data: Dict, bant: Dict, score: float, lead_history: List = None) -> Dict[str, Any]:
+        """Create personalized lead nurturing strategy based on historical learning"""
+        
+        history_context = ""
+        if lead_history:
+            successful_actions = []
+            for memory in lead_history:
+                content = memory.content
+                if content.get('qualification_status') in ['hot_lead', 'warm_lead']:
+                    successful_actions.append(content.get('recommended_action', 'unknown'))
+            
+            if successful_actions:
+                history_context = f"\n\nPrevious Successful Actions: {', '.join(set(successful_actions))}"
+        
         prompt = f"""
         Create a lead nurturing strategy for:
         
         Lead Data: {json.dumps(lead_data)} 
         BANT Scores: {json.dumps(bant)}
         Lead Score: {score}
+        {history_context}
         
         Provide nurturing strategy as JSON with:
         - communication_cadence: frequency of outreach
@@ -246,6 +371,7 @@ class SalesQualificationAgent(BaseAgent):
         - milestone_tracking: key engagement milestones
         - timeline: expected nurturing timeline
         - success_metrics: how to measure progress
+        - learned_optimizations: adjustments based on historical data
         """
         
         response = await self.use_gemini(prompt)
@@ -282,13 +408,53 @@ class SalesQualificationAgent(BaseAgent):
         else:
             return "education_content"
     
+    def _analyze_engagement_trend(self, lead_history: List) -> str:
+        """Analyze lead engagement trend from history"""
+        if not lead_history or len(lead_history) < 2:
+            return "stable"
+        
+        # Get recent scores
+        recent_scores = []
+        for memory in lead_history[:3]:  # Last 3 interactions
+            score = memory.content.get('calculated_score', 50)
+            recent_scores.append(score)
+        
+        # Analyze trend
+        if len(recent_scores) >= 2:
+            if recent_scores[0] > recent_scores[-1] + 5:
+                return "improving"
+            elif recent_scores[0] < recent_scores[-1] - 5:
+                return "declining"
+        
+        return "stable"
+    
+    async def _track_lead_progression(self, lead_id: str, current_score: float, lead_history: List):
+        """Track lead progression over time"""
+        progression_data = {
+            "lead_id": lead_id,
+            "entity_id": lead_id,
+            "current_score": current_score,
+            "historical_scores": [
+                memory.content.get('calculated_score', 0) 
+                for memory in lead_history[:5]
+            ],
+            "progression_trend": self._analyze_engagement_trend(lead_history),
+            "total_interactions": len(lead_history) + 1
+        }
+        
+        self.remember("lead_progression", progression_data, {
+            "tracking_type": "progression_analysis"
+        })
+    
     def get_capabilities(self) -> List[str]:
         return [
             "bant_qualification",
             "lead_scoring",
             "nurturing_strategy",
             "conversion_optimization",
-            "pipeline_management"
+            "pipeline_management",
+            "lead_learning",
+            "engagement_tracking"
         ]
 
 class BusinessIntelligenceAgent(BaseAgent):

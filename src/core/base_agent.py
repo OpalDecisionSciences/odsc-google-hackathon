@@ -216,26 +216,50 @@ class BaseAgent(ABC):
         )
     
     async def use_gemini(self, prompt: str, context: Dict[str, Any] = None) -> str:
-        """Use Gemini AI for intelligent processing"""
+        """Use Gemini AI for intelligent processing with conversation context"""
         if not self.gemini_model:
             return "Gemini AI not available"
         
         try:
+            # Get conversation context if available (for agents with memory)
+            conversation_context = ""
+            if hasattr(self, 'recall'):
+                recent_conversations = self.recall("conversation", limit=3)
+                if recent_conversations:
+                    conv_summary = []
+                    for conv in recent_conversations:
+                        conv_data = conv.content
+                        conv_summary.append(f"- Previous: {conv_data.get('summary', 'N/A')[:100]}")
+                    conversation_context = f"\n\nRecent Conversations:\n" + "\n".join(conv_summary)
+            
             # Enhance prompt with agent context
             enhanced_prompt = f"""
             You are {self.name}, a {self.role.value} in the {self.department} department.
             Your specialization is: {self.specialization}
             
             Context: {json.dumps(context) if context else 'None'}
+            {conversation_context}
             
             Task: {prompt}
             
             Please provide a professional response that aligns with your role and expertise.
+            If conversation history is available, maintain continuity and reference relevant past interactions.
             """
             
             response = await asyncio.to_thread(
                 self.gemini_model.generate_content, enhanced_prompt
             )
+            
+            # Remember this conversation if agent has memory
+            if hasattr(self, 'remember'):
+                self.remember("conversation", {
+                    "prompt": prompt[:200],  # Truncated
+                    "response": response.text[:200],  # Truncated
+                    "summary": f"Discussed {prompt[:50]}...",
+                    "context_provided": context is not None,
+                    "conversation_length": len(response.text)
+                }, {"interaction_type": "ai_conversation"})
+            
             return response.text
         except Exception as e:
             return f"Gemini processing error: {e}"
