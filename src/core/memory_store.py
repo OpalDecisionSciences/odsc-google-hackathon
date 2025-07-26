@@ -152,15 +152,29 @@ class MemoryStore:
     def get_entity_history(self, agent_id: str, entity_id: str, 
                           interaction_type: str, limit: int = 10) -> List[MemoryEntry]:
         """Get recent interactions with specific entity (customer, lead, etc.)"""
-        memories = self.get_memories(agent_id, interaction_type)
+        # Get all memories for this agent, not just specific interaction type
+        all_memories = self.get_memories(agent_id, None)  # Get all memory types
         
-        # Filter by entity_id in content
-        entity_memories = [
-            m for m in memories 
-            if m.content.get("entity_id") == entity_id or 
-               m.content.get("customer_id") == entity_id or
-               m.content.get("lead_id") == entity_id
-        ]
+        # Filter by entity_id in content and optionally by interaction type
+        entity_memories = []
+        for m in all_memories:
+            # Check if this memory relates to the entity
+            entity_match = (
+                m.content.get("entity_id") == entity_id or 
+                m.content.get("customer_id") == entity_id or
+                m.content.get("lead_id") == entity_id
+            )
+            
+            # If interaction_type is specified, also check memory type
+            type_match = (interaction_type is None or 
+                         m.memory_type == interaction_type or
+                         interaction_type in m.memory_type)
+            
+            if entity_match and type_match:
+                entity_memories.append(m)
+        
+        # Sort by timestamp (newest first)
+        entity_memories.sort(key=lambda x: x.timestamp, reverse=True)
         
         return entity_memories[:limit]
 
@@ -172,7 +186,11 @@ class SmartMemoryMixin:
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # Ensure we use the global memory store instance
         self.memory_store = global_memory_store
+        # Force reload of existing memories for this agent
+        if hasattr(self, 'agent_id') and self.agent_id:
+            self.memory_store.load_all_memories()
     
     def remember(self, memory_type: str, content: Dict[str, Any], 
                 metadata: Dict[str, Any] = None) -> str:
@@ -183,6 +201,8 @@ class SmartMemoryMixin:
     
     def recall(self, memory_type: str = None, limit: int = 10) -> List[MemoryEntry]:
         """Recall memories for this agent"""
+        # Ensure we have the latest memories loaded
+        self.memory_store.load_all_memories()
         return self.memory_store.get_memories(self.agent_id, memory_type, limit)
     
     def search_memory(self, query: str, memory_type: str = None) -> List[MemoryEntry]:
@@ -191,6 +211,8 @@ class SmartMemoryMixin:
     
     def get_entity_history(self, entity_id: str, interaction_type: str, limit: int = 10) -> List[MemoryEntry]:
         """Get interaction history with specific entity"""
+        # Ensure we have the latest memories loaded
+        self.memory_store.load_all_memories()
         return self.memory_store.get_entity_history(
             self.agent_id, entity_id, interaction_type, limit
         )

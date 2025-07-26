@@ -25,17 +25,20 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Import our modules
-from .core.base_agent import BaseAgent, AgentRole
-from .agents.business_agents import (
+import sys
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from core.base_agent import BaseAgent, AgentRole
+from agents.business_agents import (
     CustomerSupportAgent, SalesQualificationAgent, BusinessIntelligenceAgent,
     CustomerOperationsManager, SequentialAgent, LoopAgent, ParallelAgent, RouterAgent
 )
-from .agents.marketing_agents import (
+from agents.marketing_agents import (
     BrandManagerAgent, SocialMediaManagerAgent, ContentCreatorAgent,
     MarketingExcellenceManager
 )
-from .communication.a2a_system import global_message_broker, global_workflow_orchestrator
-from .tools.gemini_integration import GeminiAnalyzer, BusinessIntelligenceEngine
+from communication.a2a_system import global_message_broker, global_workflow_orchestrator
+from tools.gemini_integration import GeminiAnalyzer, BusinessIntelligenceEngine
 
 class BusinessAgentSystem:
     """Main orchestration system for business agents"""
