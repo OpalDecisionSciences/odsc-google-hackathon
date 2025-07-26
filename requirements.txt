@@ -1,6 +1,7 @@
 # Google AI and Generative AI
 google-generativeai>=0.3.0
 google-cloud-aiplatform>=1.38.0
+google-cloud-texttospeech>=2.27.0
 
 # Async and Event Loop
 asyncio
@@ -72,3 +73,15 @@ lru-dict>=1.2.0
 # File and Data Handling
 openpyxl>=3.1.0
 python-multipart>=0.0.6
+
+# Demo Interface
+gradio>=4.0.0
+
+# Real-World Business Intelligence Dependencies
+yfinance>=0.2.0
+feedparser>=6.0.0
+beautifulsoup4>=4.12.0
+aiohttp>=3.8.0
+
+# Optional Social Media API Dependencies (install if you have API keys)
+# pip install tweepy praw requests-oauthlib

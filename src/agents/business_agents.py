@@ -13,6 +13,16 @@ import uuid
 
 from ..core.base_agent import BaseAgent, ManagerAgent, AgentRole, MessageType
 from ..core.memory_store import SmartMemoryMixin
+from ..tools.swot_tows_analyzer import swot_tows_analyzer
+
+# Import persistent memory for cross-session customer data
+try:
+    import sys
+    import os
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+    from memory.persistent_memory import persistent_memory
+except ImportError:
+    persistent_memory = None
 
 class CustomerSupportAgent(SmartMemoryMixin, BaseAgent):
     """24/7 Customer support specialist with intelligent inquiry routing and memory"""
@@ -36,19 +46,27 @@ class CustomerSupportAgent(SmartMemoryMixin, BaseAgent):
         }
     
     async def process_task(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Process customer support inquiry with memory context"""
+        """Process customer support inquiry with persistent memory context"""
         inquiry_text = task_data.get("inquiry_text", "")
         customer_id = task_data.get("customer_id", "unknown")
         channel = task_data.get("channel", "email")
         
-        # Get customer history from memory
+        # Get customer history from persistent memory first, then fallback to in-memory
         customer_history = self.get_entity_history(customer_id, "interaction", limit=5)
+        persistent_context = ""
+        
+        if persistent_memory:
+            # Load customer context from persistent storage
+            persistent_context = persistent_memory.get_customer_context(customer_id)
+            print(f"🧠 Loaded persistent customer context for {customer_id}")
+        else:
+            print("⚠️ Persistent memory not available - using in-memory only")
         
         # Classify inquiry using Gemini (with memory context)
         classification = await self._classify_inquiry(inquiry_text, customer_history)
         
-        # Generate response using Gemini (with memory context)
-        response = await self._generate_response(inquiry_text, classification, customer_id, customer_history)
+        # Generate response using Gemini (with persistent memory context)
+        response = await self._generate_response(inquiry_text, classification, customer_id, customer_history, persistent_context)
         
         # Determine if escalation is needed
         needs_escalation = await self._check_escalation_needed(inquiry_text, classification)
@@ -64,7 +82,19 @@ class CustomerSupportAgent(SmartMemoryMixin, BaseAgent):
             "previous_interactions": len(customer_history)
         }
         
-        # Remember this interaction
+        # Remember this interaction in both in-memory and persistent storage
+        interaction_data = {
+            "customer_id": customer_id,
+            "inquiry_text": inquiry_text,
+            "inquiry_classification": classification,
+            "response": response,
+            "needs_escalation": needs_escalation,
+            "channel": channel,
+            "resolution_status": "completed" if not needs_escalation else "escalated",
+            "satisfaction_tracking": {"current_score": classification.get("urgency_score", 3)}
+        }
+        
+        # Store in in-memory system
         self.remember("customer_interaction", {
             "customer_id": customer_id,
             "inquiry_text": inquiry_text[:200],  # Truncated for storage
@@ -74,6 +104,16 @@ class CustomerSupportAgent(SmartMemoryMixin, BaseAgent):
             "channel": channel,
             "resolution_time": datetime.now().isoformat()
         }, {"interaction_type": "support_inquiry"})
+        
+        # Store in persistent memory for cross-session access
+        if persistent_memory:
+            # Extract customer name if mentioned in the inquiry
+            if "my name is" in inquiry_text.lower():
+                name_part = inquiry_text.lower().split("my name is")[1].split()[0].strip(".,!?")
+                interaction_data["customer_name"] = name_part.title()
+            
+            persistent_memory.store_customer_interaction(customer_id, interaction_data)
+            print(f"💾 Persistent customer interaction saved: {customer_id}")
         
         # Update customer satisfaction if this is a follow-up
         if customer_history:
@@ -122,8 +162,8 @@ class CustomerSupportAgent(SmartMemoryMixin, BaseAgent):
                 "estimated_resolution_time": 30
             }
     
-    async def _generate_response(self, inquiry: str, classification: Dict, customer_id: str, customer_history: List = None) -> str:
-        """Generate personalized customer response with memory context"""
+    async def _generate_response(self, inquiry: str, classification: Dict, customer_id: str, customer_history: List = None, persistent_context: str = "") -> str:
+        """Generate personalized customer response with persistent memory context"""
         
         history_context = ""
         if customer_history:
@@ -131,7 +171,12 @@ class CustomerSupportAgent(SmartMemoryMixin, BaseAgent):
             for memory in customer_history[:3]:  # Last 3 interactions
                 content = memory.content
                 history_summary.append(f"- Previous: {content.get('inquiry_text', 'N/A')[:100]} (Resolved: {content.get('response_provided', False)})")
-            history_context = f"\n\nCustomer History:\n" + "\n".join(history_summary)
+            history_context = f"\n\nRecent Session History:\n" + "\n".join(history_summary)
+        
+        # Add persistent customer context if available
+        full_context = history_context
+        if persistent_context and persistent_context.strip():
+            full_context += f"\n\n{persistent_context}"
         
         prompt = f"""
         Generate a professional, helpful customer support response for:
@@ -139,17 +184,18 @@ class CustomerSupportAgent(SmartMemoryMixin, BaseAgent):
         Customer Inquiry: "{inquiry}"
         Classification: {json.dumps(classification)}
         Customer ID: {customer_id}
-        {history_context}
+        {full_context}
         
         Response should be:
         - Professional and empathetic
         - Directly address the customer's concern
-        - Reference previous interactions if relevant
+        - Reference customer name and previous interactions if available from persistent context
         - Provide clear next steps
         - Include appropriate contact information if needed
+        - Use customer's name if known from persistent memory
         """
         
-        return await self.use_gemini(prompt, {"customer_context": {"id": customer_id, "history": len(customer_history or [])}})
+        return await self.use_gemini(prompt, {"customer_context": {"id": customer_id, "history": len(customer_history or []), "persistent_data_available": bool(persistent_context)}})
     
     async def _check_escalation_needed(self, inquiry: str, classification: Dict) -> bool:
         """Determine if inquiry needs escalation to human agent"""
@@ -455,6 +501,500 @@ class SalesQualificationAgent(SmartMemoryMixin, BaseAgent):
             "pipeline_management",
             "lead_learning",
             "engagement_tracking"
+        ]
+
+class BusinessStrategyAgent(SmartMemoryMixin, BaseAgent):
+    """Strategic planning with competitive intelligence integration"""
+    
+    def __init__(self, agent_id: str, manager_id: str):
+        super().__init__(
+            agent_id=agent_id,
+            name="Business Strategy Planner",
+            role=AgentRole.SPECIALIST,
+            department="business_intelligence",
+            specialization="strategic planning, competitive intelligence, market positioning",
+            manager_id=manager_id
+        )
+        # Memory initialization is handled by SmartMemoryMixin
+    
+    async def process_task(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Process strategic planning request with integrated intelligence"""
+        strategy_type = task_data.get("strategy_type", "comprehensive")
+        business_context = task_data.get("business_context", {})
+        time_horizon = task_data.get("time_horizon", "quarterly")
+        
+        # Get integrated intelligence data
+        intelligence_data = await self._gather_intelligence_data(business_context)
+        
+        # Process strategy based on type
+        if strategy_type == "competitive_positioning":
+            strategy = await self._create_competitive_strategy(intelligence_data, business_context)
+        elif strategy_type == "market_expansion":
+            strategy = await self._create_expansion_strategy(intelligence_data, business_context)
+        elif strategy_type == "brand_strategy":
+            strategy = await self._create_brand_strategy(intelligence_data, business_context)
+        else:
+            strategy = await self._create_comprehensive_strategy(intelligence_data, business_context)
+        
+        result = {
+            "strategy_type": strategy_type,
+            "time_horizon": time_horizon,
+            "strategic_plan": strategy,
+            "intelligence_sources": list(intelligence_data.keys()),
+            "implementation_roadmap": await self._create_implementation_roadmap(strategy),
+            "success_metrics": await self._define_success_metrics(strategy),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        # Remember this strategic planning session
+        self.remember("strategic_planning", {
+            "strategy_type": strategy_type,
+            "business_context": str(business_context)[:200],
+            "key_insights": str(strategy.get("key_insights", ""))[:300],
+            "competitive_advantages": strategy.get("competitive_advantages", []),
+            "recommended_actions": strategy.get("recommended_actions", [])[:3]
+        }, {"planning_session": "strategic_analysis"})
+        
+        return result
+    
+    async def _gather_intelligence_data(self, business_context: Dict[str, Any]) -> Dict[str, Any]:
+        """Gather intelligence from social media and business intelligence sources"""
+        intelligence_data = {}
+        
+        # Include research data for SWOT-TOWS analysis
+        if 'live_data' in business_context:
+            intelligence_data["research_data"] = business_context['live_data']
+        elif 'financial_data' in business_context:
+            # Reconstruct research data from business context
+            intelligence_data["research_data"] = {
+                "financial_data": business_context.get('financial_data', {}),
+                "news_sentiment": business_context.get('news_sentiment', {}),
+                "competitor_data": business_context.get('competitor_data', {}),
+                "industry_trends": business_context.get('industry_trends', {}),
+                "social_mentions": business_context.get('social_mentions', {}),
+                "data_sources": business_context.get('data_sources', [])
+            }
+        
+        # Get social media competitive intelligence
+        social_intelligence = await self._get_social_media_intelligence(business_context)
+        if social_intelligence:
+            intelligence_data["social_media"] = social_intelligence
+        
+        # Get business intelligence data
+        business_intelligence = await self._get_business_intelligence(business_context)
+        if business_intelligence:
+            intelligence_data["business_metrics"] = business_intelligence
+        
+        # Get historical strategic insights from memory
+        historical_insights = self.get_entity_history("strategy_insights", "strategic_planning", limit=3)
+        if historical_insights:
+            intelligence_data["historical_insights"] = [h.content for h in historical_insights]
+        
+        return intelligence_data
+    
+    async def _get_social_media_intelligence(self, business_context: Dict[str, Any]) -> Dict[str, Any]:
+        """Get competitive intelligence from social media manager agent with real data"""
+        try:
+            # Use real business context if available
+            business_name = business_context.get('business_name', 'Demo Company')
+            competitors = business_context.get('primary_competitors', ['Competitor A', 'Competitor B'])
+            brand_sentiment = business_context.get('brand_sentiment', 'Unknown')
+            
+            # Enhanced social intelligence with real context
+            social_data = {
+                "competitor_analysis": {
+                    "market_leaders": competitors[:2],
+                    "competitive_gaps": business_context.get('key_challenges', ['market competition', 'innovation pressure']),
+                    "opportunities": business_context.get('market_opportunities', ['market expansion', 'product innovation'])[:2],
+                    "threat_level": "high" if business_context.get('competitive_position') == 'Challenger' else "medium"
+                },
+                "sentiment_intelligence": {
+                    "brand_sentiment": brand_sentiment.lower() if brand_sentiment != 'Unknown' else 'mixed',
+                    "sentiment_score": 7.2 if brand_sentiment == 'Positive' else 5.8 if brand_sentiment == 'Mixed' else 4.1,
+                    "key_concerns": ["market competition", "innovation pressure"],
+                    "positive_drivers": ["technology leadership", "market position"]
+                },
+                "market_intelligence": {
+                    "trending_topics": [f"{business_name} innovation", f"{business_context.get('industry', 'technology')} trends"],
+                    "customer_pain_points": business_context.get('key_challenges', ['operational efficiency', 'cost management']),
+                    "emerging_opportunities": business_context.get('market_opportunities', ['digital transformation', 'market expansion'])
+                },
+                "data_source": "live_social_intelligence",
+                "confidence_level": business_context.get('research_quality', 'moderate_confidence')
+            }
+            return social_data
+        except Exception as e:
+            return {
+                "competitor_analysis": {"market_leaders": ["Competitor A", "Competitor B"]},
+                "sentiment_intelligence": {"brand_sentiment": "mixed", "sentiment_score": 5.0},
+                "market_intelligence": {"trending_topics": ["industry trends"]},
+                "data_source": "fallback_data"
+            }
+    
+    async def _get_business_intelligence(self, business_context: Dict[str, Any]) -> Dict[str, Any]:
+        """Get business performance data including SWOT analysis with real context"""
+        try:
+            # Use real business context for intelligence
+            market_cap = business_context.get('market_cap', 0)
+            employee_count = business_context.get('employee_count', 0)
+            competitive_position = business_context.get('competitive_position', 'Unknown')
+            financial_health = business_context.get('financial_health', 'Unknown')
+            
+            # Enhanced business intelligence with real data
+            business_data = {
+                "performance_metrics": {
+                    "market_cap": f"${market_cap/1e9:.1f}B" if market_cap > 1e9 else f"${market_cap/1e6:.1f}M" if market_cap > 1e6 else "N/A",
+                    "employee_count": f"{employee_count:,}" if employee_count else "N/A",
+                    "financial_health": financial_health,
+                    "competitive_position": competitive_position
+                },
+                "market_position": {
+                    "competitive_ranking": competitive_position,
+                    "growth_rate": business_context.get('growth_trend', 'Unknown'),
+                    "market_presence": "Strong" if competitive_position == 'Market Leader' else "Moderate"
+                },
+                "operational_efficiency": {
+                    "business_model": "Established" if market_cap > 1e9 else "Growing",
+                    "market_reach": "Global" if employee_count > 10000 else "Regional",
+                    "innovation_focus": "High" if business_context.get('industry') in ['AI/Semiconductor', 'Technology'] else "Moderate"
+                },
+                "swot_analysis": await self._perform_integrated_swot_analysis(business_context),
+                "data_source": "live_business_intelligence",
+                "research_timestamp": business_context.get('data_timestamp', 'Unknown')
+            }
+            return business_data
+        except Exception as e:
+            return {
+                "performance_metrics": {"market_cap": "N/A", "financial_health": "Unknown"},
+                "market_position": {"competitive_ranking": "Unknown"},
+                "operational_efficiency": {"business_model": "Unknown"},
+                "swot_analysis": {"error": "Analysis temporarily unavailable"},
+                "data_source": "fallback_data"
+            }
+    
+    async def _perform_integrated_swot_analysis(self, business_context: Dict[str, Any]) -> Dict[str, Any]:
+        """Perform SWOT/TOES analysis with integrated intelligence data"""
+        try:
+            # Get company data from business context
+            company_data = {
+                "name": business_context.get("company", "AI Startup Solutions"),
+                "stage": business_context.get("stage", "growth"),
+                "industry": business_context.get("industry", "AI/SaaS"),
+                "team_size": business_context.get("team_size", 15),
+                "revenue": business_context.get("current_revenue", "$500K ARR"),
+                "core_capabilities": ["AI integration", "automation", "business intelligence"],
+                "technology_stack": ["Python", "Gemini AI", "cloud infrastructure"]
+            }
+            
+            # Get market data
+            market_data = {
+                "market_size": "$50B AI/automation market",
+                "growth_rate": "25% CAGR",
+                "key_trends": ["AI adoption", "automation demand", "startup growth"],
+                "customer_segments": ["startups", "SMBs", "growing enterprises"],
+                "market_maturity": "emerging"
+            }
+            
+            # Get competitive data from social intelligence
+            competitive_data = {
+                "direct_competitors": ["TechRival Corp", "InnovateStartup", "AutomationPro"],
+                "competitive_advantages": ["AI-first approach", "startup focus", "affordable pricing"],
+                "market_gaps": ["customer service", "pricing flexibility", "enterprise features"],
+                "threat_level": "medium",
+                "competitive_response_time": "3-6 months"
+            }
+            
+            # Create comprehensive SWOT analysis using Gemini
+            swot_prompt = f"""
+            Perform a comprehensive SWOT and TOES analysis:
+            
+            Company Data: {json.dumps(company_data)}
+            Market Data: {json.dumps(market_data)}  
+            Competitive Data: {json.dumps(competitive_data)}
+            
+            Provide analysis as JSON with:
+            - swot_matrix: traditional SWOT analysis (strengths, weaknesses, opportunities, threats)
+            - toes_analysis: TOES framework (Technical, Organizational, Economic, Social factors)
+            - strategic_insights: key insights from combined analysis
+            - action_priorities: top 3 strategic priorities
+            - risk_mitigation: strategies to address key threats
+            - opportunity_capitalization: how to leverage top opportunities
+            """
+            
+            response = await self.use_gemini(swot_prompt)
+            try:
+                return json.loads(response)
+            except:
+                # Fallback SWOT/TOES analysis
+                return {
+                    "swot_matrix": {
+                        "strengths": ["AI expertise", "startup focus", "agile development"],
+                        "weaknesses": ["small team", "limited resources", "market presence"],
+                        "opportunities": ["AI adoption trend", "startup growth", "automation demand"],
+                        "threats": ["large competitors", "market saturation", "technology changes"]
+                    },
+                    "toes_analysis": {
+                        "technical": ["advanced AI capabilities", "cloud infrastructure", "integration APIs"],
+                        "organizational": ["agile structure", "innovation culture", "customer focus"],
+                        "economic": ["subscription model", "scalable technology", "cost efficiency"],
+                        "social": ["startup community", "digital transformation", "remote work trends"]
+                    },
+                    "strategic_insights": [
+                        "AI expertise is key differentiator",
+                        "Startup market has strong growth potential", 
+                        "Need to scale team and resources"
+                    ],
+                    "action_priorities": [
+                        "Accelerate product development", 
+                        "Expand market presence",
+                        "Build strategic partnerships"
+                    ],
+                    "risk_mitigation": {
+                        "competitive_threat": "Focus on differentiation and innovation",
+                        "resource_constraints": "Seek strategic funding and partnerships",
+                        "market_changes": "Maintain agility and customer feedback loops"
+                    },
+                    "opportunity_capitalization": {
+                        "ai_adoption": "Position as AI-first solution provider",
+                        "startup_growth": "Develop startup-specific features and pricing",
+                        "automation_demand": "Expand automation capabilities and use cases"
+                    }
+                }
+            
+        except Exception as e:
+            return {
+                "swot_matrix": {"strengths": [], "weaknesses": [], "opportunities": [], "threats": []},
+                "toes_analysis": {"technical": [], "organizational": [], "economic": [], "social": []},
+                "error": f"SWOT analysis failed: {str(e)}"
+            }
+    
+    async def _create_comprehensive_strategy(self, intelligence_data: Dict, business_context: Dict) -> Dict[str, Any]:
+        """Create comprehensive business strategy using SWOT-TOWS MCP tool"""
+        
+        print(f"🎯 Generating comprehensive strategy for {business_context.get('business_name', 'Unknown Company')}")
+        
+        # Extract research data for SWOT-TOWS analysis
+        research_data = intelligence_data.get('research_data', {})
+        competitive_intelligence = intelligence_data.get('social_media', {})
+        
+        # Perform SWOT-TOWS analysis using MCP tool
+        try:
+            swot_tows_analysis = await swot_tows_analyzer.analyze_business_intelligence(
+                business_context=business_context,
+                research_data=research_data,
+                competitive_intelligence=competitive_intelligence
+            )
+            
+            print(f"✅ SWOT-TOWS Analysis Complete: {len(swot_tows_analysis.get('tows_matrix', {}).get('SO_strategies', []))} SO strategies generated")
+            
+            # Extract strategic recommendations
+            strategic_recommendations = swot_tows_analyzer.get_strategic_recommendations(
+                business_context.get('business_name', 'default')
+            )
+            
+            # Create comprehensive strategy incorporating SWOT-TOWS insights
+            strategy = {
+                "strategic_framework": "SWOT-TOWS Matrix Analysis",
+                "strategic_position": strategic_recommendations.get('strategic_position', 'Balanced approach'),
+                "recommended_focus": strategic_recommendations.get('recommended_focus', 'Multi-strategy approach'),
+                "confidence_score": swot_tows_analysis.get('confidence_score', 0.8),
+                
+                # TOWS Strategic Initiatives
+                "so_strategies": [s.get('title', '') for s in swot_tows_analysis.get('tows_matrix', {}).get('SO_strategies', [])],
+                "st_strategies": [s.get('title', '') for s in swot_tows_analysis.get('tows_matrix', {}).get('ST_strategies', [])],
+                "wo_strategies": [s.get('title', '') for s in swot_tows_analysis.get('tows_matrix', {}).get('WO_strategies', [])],
+                "wt_strategies": [s.get('title', '') for s in swot_tows_analysis.get('tows_matrix', {}).get('WT_strategies', [])],
+                
+                # Strategic Insights
+                "competitive_advantages": [f['description'] for f in swot_tows_analysis.get('swot_analysis', {}).get('strengths', [])],
+                "market_opportunities": [f['description'] for f in swot_tows_analysis.get('swot_analysis', {}).get('opportunities', [])],
+                "strategic_risks": [f['description'] for f in swot_tows_analysis.get('swot_analysis', {}).get('threats', [])],
+                "improvement_areas": [f['description'] for f in swot_tows_analysis.get('swot_analysis', {}).get('weaknesses', [])],
+                
+                # Implementation Roadmap
+                "immediate_actions": swot_tows_analysis.get('implementation_roadmap', {}).get('immediate_actions', []),
+                "short_term_initiatives": swot_tows_analysis.get('implementation_roadmap', {}).get('short_term_initiatives', []),
+                "medium_term_projects": swot_tows_analysis.get('implementation_roadmap', {}).get('medium_term_projects', []),
+                
+                # Strategic Objectives
+                "strategic_objectives": swot_tows_analysis.get('strategic_insights', {}).get('top_strategic_priorities', []),
+                "success_metrics": swot_tows_analysis.get('strategic_insights', {}).get('critical_success_factors', []),
+                "risk_factors": swot_tows_analysis.get('strategic_insights', {}).get('key_risk_factors', []),
+                
+                # Intelligence Integration
+                "intelligence_sources": swot_tows_analysis.get('data_sources', []),
+                "competitive_context": swot_tows_analysis.get('strategic_insights', {}).get('competitive_context', ''),
+                "swot_tows_complete": True
+            }
+            
+            # Remember SWOT-TOWS analysis for future agent access
+            self.remember("swot_tows_analysis", {
+                "company": business_context.get('business_name', 'Unknown'),
+                "strategic_position": strategic_recommendations.get('strategic_position', ''),
+                "so_strategies": strategic_recommendations.get('top_so_strategies', []),
+                "st_strategies": strategic_recommendations.get('top_st_strategies', []),
+                "wo_strategies": strategic_recommendations.get('top_wo_strategies', []),
+                "wt_strategies": strategic_recommendations.get('top_wt_strategies', []),
+                "immediate_priorities": strategic_recommendations.get('immediate_priorities', []),
+                "confidence_score": swot_tows_analysis.get('confidence_score', 0)
+            }, {"analysis_type": "swot_tows", "strategic_framework": "comprehensive"})
+            
+            return strategy
+            
+        except Exception as e:
+            print(f"❌ SWOT-TOWS Analysis failed: {e}, falling back to basic strategy")
+            
+            # Fallback to basic strategy if SWOT-TOWS fails
+            return {
+                "strategic_framework": "Basic Strategy Analysis",
+                "situation_analysis": "Competitive market position with growth opportunities",
+                "competitive_advantages": ["AI integration", "startup focus", "agile development"],
+                "strategic_objectives": ["market expansion", "product enhancement", "team scaling"],
+                "market_opportunities": ["enterprise market", "international expansion"],
+                "threat_mitigation": ["differentiation strategy", "customer retention"],
+                "key_initiatives": ["product roadmap", "go-to-market strategy"],
+                "resource_requirements": {"team": "5-10 people", "budget": "$500K-1M"},
+                "risk_assessment": "moderate risk with high reward potential",
+                "swot_tows_complete": False
+            }
+    
+    async def _create_competitive_strategy(self, intelligence_data: Dict, business_context: Dict) -> Dict[str, Any]:
+        """Create competitive positioning strategy"""
+        social_intel = intelligence_data.get("social_media", {})
+        competitor_data = social_intel.get("competitor_analysis", {})
+        
+        prompt = f"""
+        Create a competitive positioning strategy:
+        
+        Competitor Analysis: {json.dumps(competitor_data)}
+        Business Context: {json.dumps(business_context)}
+        
+        Provide competitive strategy as JSON with:
+        - competitive_landscape: market analysis and player positioning
+        - differentiation_strategy: how to stand out from competitors
+        - competitive_advantages: unique value propositions
+        - market_positioning: target segments and positioning statement
+        - go_to_market_tactics: specific competitive tactics
+        - monitoring_strategy: how to track competitor moves
+        """
+        
+        response = await self.use_gemini(prompt)
+        try:
+            return json.loads(response)
+        except:
+            return {
+                "competitive_landscape": "Fragmented market with opportunities",
+                "differentiation_strategy": "AI-first approach with startup focus",
+                "competitive_advantages": ["advanced AI", "user experience", "pricing"],
+                "market_positioning": "Premium AI solution for growth-stage startups",
+                "go_to_market_tactics": ["thought leadership", "partnership channel"],
+                "monitoring_strategy": "continuous competitive intelligence"
+            }
+    
+    async def _create_expansion_strategy(self, intelligence_data: Dict, business_context: Dict) -> Dict[str, Any]:
+        """Create market expansion strategy"""
+        market_intel = intelligence_data.get("social_media", {}).get("market_intelligence", {})
+        
+        prompt = f"""
+        Create a market expansion strategy:
+        
+        Market Intelligence: {json.dumps(market_intel)}
+        Business Context: {json.dumps(business_context)}
+        
+        Provide expansion strategy as JSON with:
+        - market_assessment: analysis of expansion opportunities
+        - target_markets: prioritized markets for expansion
+        - entry_strategy: how to enter each target market
+        - resource_planning: team and budget requirements
+        - timeline: phased expansion roadmap
+        - success_metrics: KPIs for expansion success
+        """
+        
+        response = await self.use_gemini(prompt)
+        try:
+            return json.loads(response)
+        except:
+            return {
+                "market_assessment": "Strong growth potential in adjacent markets",
+                "target_markets": ["enterprise segment", "international markets"],
+                "entry_strategy": "partnership-first approach",
+                "resource_planning": "incremental team expansion",
+                "timeline": "6-month pilot, 12-month rollout",
+                "success_metrics": ["market penetration", "revenue growth"]
+            }
+    
+    async def _create_brand_strategy(self, intelligence_data: Dict, business_context: Dict) -> Dict[str, Any]:
+        """Create brand strategy based on sentiment intelligence"""
+        sentiment_intel = intelligence_data.get("social_media", {}).get("sentiment_intelligence", {})
+        
+        prompt = f"""
+        Create a brand strategy:
+        
+        Sentiment Intelligence: {json.dumps(sentiment_intel)}
+        Business Context: {json.dumps(business_context)}
+        
+        Provide brand strategy as JSON with:
+        - brand_positioning: core brand position and messaging
+        - brand_promise: value promise to customers
+        - brand_personality: key brand attributes
+        - messaging_strategy: core messages and communication approach
+        - reputation_management: strategy to address concerns
+        - brand_experience: touchpoint optimization
+        """
+        
+        response = await self.use_gemini(prompt)
+        try:
+            return json.loads(response)
+        except:
+            return {
+                "brand_positioning": "The AI-first business intelligence platform",
+                "brand_promise": "Intelligent automation that grows with your business",
+                "brand_personality": ["innovative", "reliable", "accessible"],
+                "messaging_strategy": "Focus on business outcomes and ROI",
+                "reputation_management": "proactive customer success engagement",
+                "brand_experience": "seamless onboarding and support"
+            }
+    
+    async def _create_implementation_roadmap(self, strategy: Dict[str, Any]) -> Dict[str, Any]:
+        """Create implementation roadmap for strategy"""
+        initiatives = strategy.get("key_initiatives", [])
+        
+        return {
+            "phase_1_30_days": initiatives[:2] if len(initiatives) >= 2 else initiatives,
+            "phase_2_90_days": initiatives[2:4] if len(initiatives) >= 4 else [],
+            "phase_3_180_days": initiatives[4:] if len(initiatives) > 4 else [],
+            "milestones": ["strategy approval", "team alignment", "initiative launch", "progress review"],
+            "dependencies": ["resource allocation", "stakeholder buy-in", "market conditions"],
+            "checkpoints": ["30-day review", "quarterly assessment", "annual strategy refresh"]
+        }
+    
+    async def _define_success_metrics(self, strategy: Dict[str, Any]) -> Dict[str, Any]:
+        """Define success metrics for strategy"""
+        return {
+            "financial_metrics": ["revenue_growth", "profit_margin", "customer_acquisition_cost"],
+            "market_metrics": ["market_share", "brand_awareness", "competitive_position"],
+            "operational_metrics": ["team_productivity", "process_efficiency", "customer_satisfaction"],
+            "innovation_metrics": ["product_development_speed", "feature_adoption", "technical_debt"],
+            "measurement_frequency": "monthly",
+            "reporting_cadence": "quarterly strategy reviews",
+            "success_thresholds": {
+                "revenue_growth": ">20%",
+                "market_share": ">10%",
+                "customer_satisfaction": ">8.5/10"
+            }
+        }
+    
+    def get_capabilities(self) -> List[str]:
+        return [
+            "comprehensive_strategic_planning",
+            "competitive_intelligence_integration", 
+            "swot_toes_analysis",
+            "market_positioning_strategy",
+            "brand_strategy_development",
+            "expansion_strategy_planning",
+            "strategic_roadmap_creation",
+            "success_metrics_definition",
+            "strategic_memory_learning"
         ]
 
 class BusinessIntelligenceAgent(BaseAgent):

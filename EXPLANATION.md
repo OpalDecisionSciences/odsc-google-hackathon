@@ -26,8 +26,9 @@ Our hierarchical agent system processes inputs through this step-by-step workflo
 ### Core Framework
 - **BaseAgent** (`src/core/base_agent.py`): Foundation with Gemini integration, message handling, and performance tracking
 - **ManagerAgent** (`src/core/base_agent.py`): Extends BaseAgent with team oversight and delegation capabilities  
-- **Memory Store** (`src/core/memory_store.py`): Persistent memory system with JSON storage and smart retrieval
+- **Memory Store** (`src/core/memory_store.py`): In-session memory system with smart retrieval
 - **SmartMemoryMixin** (`src/core/memory_store.py`): Reusable memory capabilities for any agent
+- **PersistentMemoryManager** (`src/memory/persistent_memory.py`): Cross-session JSON storage with Docker compatibility
 
 ### Communication System
 - **A2A System** (`src/communication/a2a_system.py`): Message broker with advanced routing strategies
@@ -70,7 +71,44 @@ Our hierarchical agent system processes inputs through this step-by-step workflo
 - **Conversation Context**: Cross-session context preservation and continuity
 - **Pattern Recognition**: Success pattern identification and application
 
-## 4. Observability & Testing
+## 4. Persistent Memory Architecture
+
+### **Cross-Session Memory System**
+Our persistent memory system ensures that customer interactions, strategic intelligence, and agent learning patterns survive system restarts and container redeployments.
+
+#### **Memory Components**
+- **Customer Interactions** (`memory_data/customer_interactions.json`): Complete customer conversation history with name extraction
+- **SWOT Intelligence** (`memory_data/swot_intelligence.json`): Strategic analysis results that persist across sessions
+- **Agent Interactions** (`memory_data/agent_interactions.json`): Agent performance and learning pattern tracking
+- **Business Contexts** (`memory_data/business_contexts.json`): Research data and competitive intelligence
+
+#### **Memory Operations**
+```python
+# Customer service remembers users by name
+if "my name is" in inquiry_text.lower():
+    name = extract_customer_name(inquiry_text)
+    persistent_memory.store_customer_interaction(customer_id, {
+        "customer_name": name,
+        "conversation_history": [...],
+        "satisfaction_scores": [...]
+    })
+
+# Cross-session customer context loading
+context = persistent_memory.get_customer_context(customer_id)
+# Returns: "Customer Name: John Smith, Total Interactions: 3, ..."
+```
+
+#### **Strategic Intelligence Persistence**
+- **SWOT-TOWS Analysis**: Complete strategic matrices stored with 91% confidence scores
+- **Competitive Data**: Real competitor information from Yahoo Finance and news sources
+- **Cross-Agent Sharing**: All agents can access strategic insights from previous sessions
+
+#### **Docker Compatibility**
+- **Relative Paths**: Memory files stored in project-relative paths for container deployment
+- **Volume Mounting**: `memory_data/` directory can be mounted as Docker volume for persistence
+- **Cleanup Operations**: Built-in memory cleanup to prevent excessive file growth
+
+## 5. Observability & Testing
 
 ### Comprehensive Testing Framework
 - **Memory Feature Tests**: `test_memory_features.py` validates all memory capabilities

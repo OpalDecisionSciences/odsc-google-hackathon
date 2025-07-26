@@ -23,7 +23,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Import system components
-from src.agents.business_agents import CustomerSupportAgent, SalesQualificationAgent
+from src.agents.business_agents import CustomerSupportAgent, SalesQualificationAgent, BusinessStrategyAgent
 from src.agents.marketing_agents import SocialMediaManagerAgent, ContentCreatorAgent
 
 async def demo_memory_features():
@@ -215,6 +215,40 @@ async def demo_ai_capabilities():
         sentiment_result = await social_agent.process_task(sentiment_data)
         print(f"   ✅ Sentiment Analysis: {sentiment_result['mentions_analyzed']} mentions analyzed")
         print(f"   ✅ Brand Intelligence: Generated comprehensive sentiment insights")
+        
+        # Strategic Planning with Intelligence Integration
+        print("\n5️⃣ Strategic Planning with Integrated Intelligence")
+        strategy_agent = BusinessStrategyAgent("demo_strategy", "demo_manager")
+        
+        # Comprehensive strategy with intelligence integration
+        strategy_data = {
+            "strategy_type": "comprehensive",
+            "business_context": {
+                "company": "AI Startup Solutions",
+                "stage": "growth",
+                "industry": "AI/SaaS",
+                "target_market": "startups and SMBs"
+            },
+            "time_horizon": "quarterly"
+        }
+        
+        strategy_result = await strategy_agent.process_task(strategy_data)
+        print(f"   ✅ Strategic Plan: {strategy_result['strategy_type']} strategy created")
+        print(f"   ✅ Intelligence Sources: {len(strategy_result['intelligence_sources'])} data sources integrated")
+        print(f"   ✅ Implementation Roadmap: Multi-phase execution plan generated")
+        
+        # Competitive positioning strategy
+        competitive_strategy_data = {
+            "strategy_type": "competitive_positioning",
+            "business_context": {
+                "company": "AI Startup Solutions",
+                "competitors": ["TechRival Corp", "InnovateStartup"],
+                "differentiators": ["AI-first", "startup-focused", "affordable"]
+            }
+        }
+        
+        comp_strategy_result = await strategy_agent.process_task(competitive_strategy_data)
+        print(f"   ✅ Competitive Strategy: Generated positioning strategy with market differentiation")
         
         return True
         

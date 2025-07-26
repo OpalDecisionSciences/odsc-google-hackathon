@@ -1,0 +1,66 @@
+# AI Agent Orchestration System - Docker ignore
+
+# Development files
+.git
+.gitignore
+*.md
+!README.md
+!DEMO.md
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.hack/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Memory data (will be mounted as volume)
+memory_data/
+
+# Test files
+test_*.py
+tests/
+.pytest_cache/
+.coverage
+
+# Documentation
+docs/
+*.md
+!README.md

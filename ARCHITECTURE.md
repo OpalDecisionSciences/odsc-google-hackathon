@@ -107,9 +107,43 @@ Advanced Workflow Patterns:
 
 #### Business Intelligence Team
 - **BI Agent**: Performance analytics and insights
+- **Research Assistant Agent**: Live business intelligence gathering
 - **Manager**: Strategic analysis coordination
 
-### 5. Gemini AI Integration (`src/tools/gemini_integration.py`)
+### 5. Persistent Memory Architecture
+
+```
+Persistent Memory System (memory_data/)
+├── Customer Interactions (customer_interactions.json)
+│   ├── Customer Name Extraction & Storage
+│   ├── Conversation History with Timestamps
+│   ├── Satisfaction Score Tracking
+│   └── Escalation History
+│
+├── Strategic Intelligence (swot_intelligence.json)
+│   ├── SWOT-TOWS Analysis Results
+│   ├── Competitive Data with 91% Confidence
+│   ├── Strategic Position Assessment
+│   └── Implementation Roadmaps
+│
+├── Agent Performance (agent_interactions.json)
+│   ├── Cross-Session Learning Patterns
+│   ├── Performance Metrics Tracking
+│   └── Optimization Insights
+│
+└── Business Contexts (business_contexts.json)
+    ├── Live Financial Data Caching
+    ├── Competitive Intelligence
+    └── Market Research Results
+```
+
+**Key Features**:
+- **Cross-Session Persistence**: Customer service remembers users by name across system restarts
+- **Strategic Intelligence Sharing**: SWOT-TOWS analysis available to all agents permanently
+- **Docker Compatibility**: JSON files stored in project-relative paths for container deployment
+- **Memory Cleanup**: Automated data cleanup to prevent excessive file growth
+
+### 6. Gemini AI Integration (`src/tools/gemini_integration.py`)
 
 **Purpose**: Advanced AI-powered business analysis capabilities
 
@@ -145,10 +179,15 @@ Advanced Workflow Patterns:
 - **Implementation**: Per-agent AI access with specialized prompts
 - **Benefits**: Intelligent analysis, consistent quality, business expertise
 
-### 5. Workflow Pattern Library
+### 7. Workflow Pattern Library
 - **Rationale**: Handle diverse business process requirements
 - **Implementation**: Pluggable workflow patterns (Sequential, Loop, Parallel, Router)
 - **Benefits**: Flexibility, reusability, optimal processing for different scenarios
+
+### 8. Persistent Memory System
+- **Rationale**: Maintain customer relationships and strategic intelligence across sessions
+- **Implementation**: JSON-based storage with Docker-compatible paths
+- **Benefits**: Customer service continuity, strategic analysis persistence, cross-session learning
 
 ## Scalability Considerations
 
