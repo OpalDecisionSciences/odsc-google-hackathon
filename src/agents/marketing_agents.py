@@ -200,6 +200,14 @@ class SocialMediaManagerAgent(SmartMemoryMixin, BaseAgent):
             return await self._manage_community(task_data)
         elif task_type == "campaign_optimization":
             return await self._optimize_campaign(task_data)
+        elif task_type == "competitor_analysis":
+            return await self._analyze_competitor_performance(task_data)
+        elif task_type == "sentiment_monitoring":
+            return await self._monitor_customer_sentiment(task_data)
+        elif task_type == "brand_monitoring":
+            return await self._analyze_brand_mentions(task_data)
+        elif task_type == "competitive_benchmarking":
+            return await self._benchmark_against_competitors(task_data)
         else:
             return await self._general_social_management(task_data)
     
@@ -439,6 +447,315 @@ class SocialMediaManagerAgent(SmartMemoryMixin, BaseAgent):
             "response_timeline": "within_1_hour"
         }
     
+    async def _analyze_competitor_performance(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Analyze competitor social media performance and extract strategic insights"""
+        competitors = task_data.get("competitors", [])
+        analysis_period = task_data.get("period", "last_30_days")
+        platforms = task_data.get("platforms", ["linkedin", "twitter"])
+        
+        # Get previous competitor analysis from memory for trend tracking
+        competitor_memories = self.recall("competitor_analysis", limit=10)
+        historical_data = {}
+        
+        for memory in competitor_memories:
+            comp_data = memory.content
+            comp_name = comp_data.get("competitor_name")
+            if comp_name:
+                historical_data[comp_name] = comp_data
+        
+        prompt = f"""
+        Analyze competitor social media performance and provide strategic insights:
+        
+        Competitors: {json.dumps(competitors)}
+        Analysis Period: {analysis_period}
+        Platforms: {json.dumps(platforms)}
+        Historical Data: {json.dumps(historical_data) if historical_data else 'None'}
+        
+        Provide comprehensive competitor analysis as JSON with:
+        - competitor_performance: individual performance metrics for each competitor
+        - success_patterns: what's working well for top performers
+        - failure_patterns: what's not working for struggling competitors
+        - content_strategies: analysis of their content approaches
+        - engagement_tactics: successful engagement methods they use
+        - posting_patterns: optimal timing and frequency insights
+        - audience_insights: their target audience characteristics
+        - competitive_gaps: opportunities where we can outperform
+        - threat_assessment: areas where competitors pose risks
+        - strategic_recommendations: actionable insights for our strategy
+        - trend_analysis: performance trends compared to historical data
+        """
+        
+        analysis = await self.use_gemini(prompt)
+        
+        try:
+            competitor_analysis = json.loads(analysis)
+        except:
+            competitor_analysis = {
+                "competitor_performance": {},
+                "success_patterns": ["High-quality visual content", "Consistent posting"],
+                "failure_patterns": ["Irregular posting", "Low engagement rates"],
+                "content_strategies": ["Educational content", "Behind-the-scenes"],
+                "strategic_recommendations": ["Focus on unique value proposition", "Increase posting frequency"]
+            }
+        
+        # Remember this analysis for future trend tracking
+        for competitor in competitors:
+            comp_name = competitor.get("name", "unknown")
+            self.remember("competitor_analysis", {
+                "competitor_name": comp_name,
+                "analysis_period": analysis_period,
+                "performance_data": competitor_analysis.get("competitor_performance", {}).get(comp_name, {}),
+                "platforms_analyzed": platforms,
+                "analysis_summary": str(competitor_analysis)[:300]
+            }, {"analysis_type": "competitive_intelligence"})
+        
+        return {
+            "analysis_type": "competitor_performance",
+            "period": analysis_period,
+            "competitors_analyzed": len(competitors),
+            "competitive_intelligence": competitor_analysis,
+            "historical_trends_available": len(historical_data) > 0,
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    async def _monitor_customer_sentiment(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Monitor and analyze customer sentiment across social media platforms"""
+        brand_name = task_data.get("brand_name", "our company")
+        monitoring_period = task_data.get("period", "last_7_days")
+        platforms = task_data.get("platforms", ["twitter", "linkedin", "facebook"])
+        mentions_data = task_data.get("mentions", [])
+        
+        # Get historical sentiment data from memory
+        sentiment_memories = self.recall("sentiment_tracking", limit=20)
+        sentiment_trends = []
+        
+        for memory in sentiment_memories:
+            sentiment_data = memory.content
+            sentiment_trends.append({
+                "date": memory.timestamp.isoformat(),
+                "sentiment_score": sentiment_data.get("overall_sentiment_score", 0),
+                "mention_count": sentiment_data.get("mention_count", 0),
+                "platform": sentiment_data.get("platform", "unknown")
+            })
+        
+        prompt = f"""
+        Analyze customer sentiment and brand perception across social media:
+        
+        Brand: {brand_name}
+        Monitoring Period: {monitoring_period}
+        Platforms: {json.dumps(platforms)}
+        Mentions Data: {json.dumps(mentions_data)}
+        Historical Sentiment Trends: {json.dumps(sentiment_trends[-10:]) if sentiment_trends else 'None'}
+        
+        Provide comprehensive sentiment analysis as JSON with:
+        - overall_sentiment_score: score from -100 (very negative) to +100 (very positive)
+        - sentiment_breakdown: positive, neutral, negative percentages
+        - platform_sentiment: sentiment analysis by platform
+        - key_themes: main topics customers are discussing
+        - positive_feedback: what customers are praising
+        - negative_feedback: common complaints and issues
+        - sentiment_drivers: factors influencing sentiment
+        - customer_emotions: primary emotions expressed (joy, frustration, excitement)
+        - influential_mentions: high-impact mentions or conversations
+        - reputation_risks: potential reputation threats
+        - response_recommendations: suggested responses to feedback
+        - trend_analysis: sentiment changes compared to historical data
+        - action_priorities: immediate actions needed based on sentiment
+        """
+        
+        sentiment_analysis = await self.use_gemini(prompt)
+        
+        try:
+            sentiment_result = json.loads(sentiment_analysis)
+        except:
+            sentiment_result = {
+                "overall_sentiment_score": 75,
+                "sentiment_breakdown": {"positive": 60, "neutral": 30, "negative": 10},
+                "key_themes": ["product quality", "customer service", "innovation"],
+                "positive_feedback": ["great product", "excellent support"],
+                "negative_feedback": ["pricing concerns", "delivery delays"],
+                "response_recommendations": ["Address pricing feedback", "Improve delivery communication"]
+            }
+        
+        # Remember sentiment data for trend tracking
+        self.remember("sentiment_tracking", {
+            "brand_name": brand_name,
+            "monitoring_period": monitoring_period,
+            "platforms": platforms,
+            "overall_sentiment_score": sentiment_result.get("overall_sentiment_score", 0),
+            "mention_count": len(mentions_data),
+            "sentiment_breakdown": sentiment_result.get("sentiment_breakdown", {}),
+            "key_themes": sentiment_result.get("key_themes", []),
+            "reputation_risks": sentiment_result.get("reputation_risks", [])
+        }, {"tracking_type": "sentiment_monitoring"})
+        
+        return {
+            "monitoring_type": "customer_sentiment",
+            "brand": brand_name,
+            "period": monitoring_period,
+            "platforms_monitored": platforms,
+            "mentions_analyzed": len(mentions_data),
+            "sentiment_intelligence": sentiment_result,
+            "trend_data_available": len(sentiment_trends) > 0,
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    async def _analyze_brand_mentions(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Analyze brand mentions and conversations across platforms"""
+        brand_name = task_data.get("brand_name", "our company")
+        mentions = task_data.get("mentions", [])
+        time_period = task_data.get("period", "last_24_hours")
+        
+        # Get previous mention analysis from memory
+        mention_memories = self.search_memory(brand_name, "brand_monitoring")
+        historical_mentions = []
+        
+        for memory in mention_memories[:5]:  # Last 5 mention analyses
+            mention_data = memory.content
+            historical_mentions.append({
+                "date": memory.timestamp.isoformat(),
+                "mention_count": mention_data.get("mention_count", 0),
+                "engagement_level": mention_data.get("avg_engagement", 0),
+                "sentiment": mention_data.get("dominant_sentiment", "neutral")
+            })
+        
+        prompt = f"""
+        Analyze brand mentions and customer conversations:
+        
+        Brand: {brand_name}
+        Time Period: {time_period}
+        Mentions: {json.dumps(mentions)}
+        Historical Context: {json.dumps(historical_mentions) if historical_mentions else 'None'}
+        
+        Provide brand mention analysis as JSON with:
+        - mention_volume: total number of mentions analyzed
+        - reach_analysis: estimated audience reach of mentions
+        - engagement_metrics: likes, shares, comments analysis
+        - mention_sources: breakdown by platform and source type
+        - conversation_themes: main topics being discussed
+        - influencer_mentions: mentions by influential accounts
+        - customer_questions: questions customers are asking
+        - brand_associations: what people associate with the brand
+        - competitive_mentions: mentions comparing to competitors
+        - crisis_indicators: potential PR issues to monitor
+        - response_opportunities: mentions that warrant company response
+        - amplification_potential: content worth sharing or promoting
+        - reputation_impact: overall impact on brand reputation
+        - trending_topics: emerging topics related to the brand
+        """
+        
+        mention_analysis = await self.use_gemini(prompt)
+        
+        try:
+            mention_result = json.loads(mention_analysis)
+        except:
+            mention_result = {
+                "mention_volume": len(mentions),
+                "reach_analysis": {"estimated_reach": "5K-10K"},
+                "engagement_metrics": {"avg_engagement": "moderate"},
+                "conversation_themes": ["product features", "customer support"],
+                "response_opportunities": ["customer questions", "feature requests"],
+                "reputation_impact": "positive"
+            }
+        
+        # Remember mention analysis
+        self.remember("brand_monitoring", {
+            "brand_name": brand_name,
+            "time_period": time_period,
+            "mention_count": len(mentions),
+            "avg_engagement": mention_result.get("engagement_metrics", {}).get("avg_engagement", 0),
+            "dominant_sentiment": mention_result.get("reputation_impact", "neutral"),
+            "conversation_themes": mention_result.get("conversation_themes", []),
+            "response_opportunities": mention_result.get("response_opportunities", []),
+            "crisis_indicators": mention_result.get("crisis_indicators", [])
+        }, {"monitoring_type": "brand_mentions"})
+        
+        return {
+            "analysis_type": "brand_mentions",
+            "brand": brand_name,
+            "period": time_period,
+            "mentions_processed": len(mentions),
+            "brand_intelligence": mention_result,
+            "historical_context": len(historical_mentions) > 0,
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    async def _benchmark_against_competitors(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Benchmark our social media performance against competitors"""
+        our_metrics = task_data.get("our_metrics", {})
+        competitor_metrics = task_data.get("competitor_metrics", {})
+        benchmarking_period = task_data.get("period", "last_month")
+        
+        # Get historical benchmarking data
+        benchmark_memories = self.recall("competitive_benchmarking", limit=5)
+        trend_data = []
+        
+        for memory in benchmark_memories:
+            benchmark_data = memory.content
+            trend_data.append({
+                "date": memory.timestamp.isoformat(),
+                "our_performance_score": benchmark_data.get("our_performance_score", 0),
+                "market_position": benchmark_data.get("market_position", "unknown"),
+                "competitive_advantage": benchmark_data.get("competitive_advantages", [])
+            })
+        
+        prompt = f"""
+        Perform competitive benchmarking analysis for social media performance:
+        
+        Our Metrics: {json.dumps(our_metrics)}
+        Competitor Metrics: {json.dumps(competitor_metrics)}
+        Benchmarking Period: {benchmarking_period}
+        Historical Trend Data: {json.dumps(trend_data) if trend_data else 'None'}
+        
+        Provide benchmarking analysis as JSON with:
+        - performance_comparison: how we rank against each competitor
+        - our_performance_score: overall score (0-100) relative to market
+        - market_position: our position (leader, strong_competitor, challenger, niche_player)
+        - competitive_advantages: areas where we outperform competitors
+        - competitive_disadvantages: areas where we lag behind
+        - opportunity_gaps: areas with potential for improvement
+        - threat_assessment: competitive threats to monitor
+        - benchmark_metrics: key metrics comparison table
+        - improvement_targets: specific metrics to focus on improving
+        - strategic_priorities: recommended focus areas based on gaps
+        - market_trends: overall market performance trends
+        - competitive_landscape: overview of competitive dynamics
+        """
+        
+        benchmark_analysis = await self.use_gemini(prompt)
+        
+        try:
+            benchmark_result = json.loads(benchmark_analysis)
+        except:
+            benchmark_result = {
+                "our_performance_score": 75,
+                "market_position": "strong_competitor",
+                "competitive_advantages": ["content quality", "engagement rate"],
+                "competitive_disadvantages": ["posting frequency", "follower growth"],
+                "improvement_targets": ["increase posting frequency", "improve follower acquisition"],
+                "strategic_priorities": ["content optimization", "audience growth"]
+            }
+        
+        # Remember benchmarking results
+        self.remember("competitive_benchmarking", {
+            "benchmarking_period": benchmarking_period,
+            "our_performance_score": benchmark_result.get("our_performance_score", 0),
+            "market_position": benchmark_result.get("market_position", "unknown"),
+            "competitive_advantages": benchmark_result.get("competitive_advantages", []),
+            "competitive_disadvantages": benchmark_result.get("competitive_disadvantages", []),
+            "improvement_targets": benchmark_result.get("improvement_targets", []),
+            "competitors_analyzed": len(competitor_metrics)
+        }, {"analysis_type": "competitive_benchmarking"})
+        
+        return {
+            "analysis_type": "competitive_benchmarking",
+            "period": benchmarking_period,
+            "competitors_benchmarked": len(competitor_metrics),
+            "benchmarking_intelligence": benchmark_result,
+            "trend_analysis_available": len(trend_data) > 0,
+            "timestamp": datetime.now().isoformat()
+        }
+    
     async def _general_social_management(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
         """General social media management activities"""
         return {
@@ -501,7 +818,15 @@ class SocialMediaManagerAgent(SmartMemoryMixin, BaseAgent):
             "social_media_analytics",
             "crisis_management",
             "multi_platform_strategy",
-            "content_performance_learning"
+            "content_performance_learning",
+            "competitor_analysis",
+            "customer_sentiment_monitoring",
+            "brand_mention_tracking",
+            "competitive_benchmarking",
+            "reputation_management",
+            "competitive_intelligence",
+            "sentiment_trend_analysis",
+            "brand_perception_monitoring"
         ]
 
 class ContentCreatorAgent(SmartMemoryMixin, BaseAgent):

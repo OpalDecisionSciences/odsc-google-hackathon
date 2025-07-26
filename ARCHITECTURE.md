@@ -101,8 +101,8 @@ Advanced Workflow Patterns:
 
 #### Marketing Excellence Team
 - **Brand Manager**: Consistency checking and messaging strategy
-- **Social Media Manager**: Community management and engagement
-- **Content Creator**: Multi-channel content development
+- **Social Media Manager**: Community management, competitive intelligence, and sentiment monitoring
+- **Content Creator**: Multi-channel content development with performance optimization
 - **Manager**: Campaign coordination and strategy alignment
 
 #### Business Intelligence Team

@@ -184,6 +184,38 @@ async def demo_ai_capabilities():
         print(f"   ✅ SEO Optimized: {ai_content['seo_optimized']}")
         print(f"   ✅ Brand Aligned: {ai_content['brand_aligned']}")
         
+        # Social Media Intelligence Demo
+        print("\n4️⃣ Social Media Intelligence & Competitive Analysis")
+        social_agent = SocialMediaManagerAgent("demo_ai_social", "demo_manager")
+        
+        # Competitor analysis
+        competitor_data = {
+            "task_type": "competitor_analysis",
+            "competitors": [
+                {"name": "TechRival Corp", "engagement_rate": 4.2, "followers": 15000},
+                {"name": "InnovateStartup", "engagement_rate": 6.1, "followers": 8000}
+            ],
+            "period": "last_30_days"
+        }
+        
+        competitor_result = await social_agent.process_task(competitor_data)
+        print(f"   ✅ Competitor Analysis: {competitor_result['competitors_analyzed']} competitors analyzed")
+        
+        # Sentiment monitoring
+        sentiment_data = {
+            "task_type": "sentiment_monitoring",
+            "brand_name": "AI Startup Solutions",
+            "mentions": [
+                {"text": "Love the AI features!", "sentiment": "positive"},
+                {"text": "Great product, high pricing", "sentiment": "mixed"},
+                {"text": "Excellent customer support", "sentiment": "positive"}
+            ]
+        }
+        
+        sentiment_result = await social_agent.process_task(sentiment_data)
+        print(f"   ✅ Sentiment Analysis: {sentiment_result['mentions_analyzed']} mentions analyzed")
+        print(f"   ✅ Brand Intelligence: Generated comprehensive sentiment insights")
+        
         return True
         
     except Exception as e:

@@ -37,7 +37,7 @@ Our hierarchical agent system processes inputs through this step-by-step workflo
 ### Business Agent Specializations
 - **CustomerSupportAgent** (`src/agents/business_agents.py`): 24/7 support with memory-enhanced personalization
 - **SalesQualificationAgent** (`src/agents/business_agents.py`): BANT analysis with lead learning and progression tracking
-- **SocialMediaManagerAgent** (`src/agents/marketing_agents.py`): Content creation with performance learning
+- **SocialMediaManagerAgent** (`src/agents/marketing_agents.py`): Content creation, competitive intelligence, sentiment monitoring
 - **ContentCreatorAgent** (`src/agents/marketing_agents.py`): Multi-channel content with optimization patterns
 
 ### Advanced Workflow Patterns
