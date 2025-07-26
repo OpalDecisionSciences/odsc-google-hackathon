@@ -38,14 +38,17 @@ Our solution provides **AI-powered business intelligence** with **memory-enhance
 
 **Run the system locally:**
 ```bash
-# Setup environment
+# Setup environment (if using virtual env)
 source .hack/bin/activate
 pip install -r requirements.txt
 
-# Run comprehensive demo
-python src/main.py --demo
+# Set your Gemini API key
+export GEMINI_API_KEY="your_api_key_here"
 
-# Test memory features
+# Run comprehensive demo
+python demo.py
+
+# Test memory features specifically
 python test_memory_features.py
 ```
 
@@ -92,7 +95,7 @@ python test_memory_features.py
 
 4. **Full System Demo:**
    ```bash
-   python src/main.py --demo
+   python demo.py
    ```
 
 ## Expected Demo Outcomes
