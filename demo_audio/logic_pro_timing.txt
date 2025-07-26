@@ -1,0 +1,45 @@
+# Logic Pro Audio Placement Guide
+# Copy and paste these exact positions when placing audio files
+
+File: narration_segment_01.aiff
+Position: 0:00.0
+Duration: ~15 seconds
+Action: Opening hook - show demo interface
+
+File: narration_segment_02.aiff  
+Position: 0:15.0
+Duration: ~30 seconds
+Action: Show system overview, point to 8 agents
+
+File: narration_segment_03.aiff
+Position: 0:45.0  
+Duration: ~45 seconds
+Action: Enter NVIDIA, select AI/Semiconductor, click Gather Intelligence
+
+File: narration_segment_04.aiff
+Position: 1:30.0
+Duration: ~45 seconds  
+Action: Select Comprehensive strategy, click Generate Strategy
+
+File: narration_segment_05.aiff
+Position: 2:15.0
+Duration: ~45 seconds
+Action: Select Competitor Analysis, show social media intelligence
+
+File: narration_segment_06.aiff
+Position: 3:00.0
+Duration: ~30 seconds
+Action: Show technical architecture, API status
+
+File: narration_segment_07.aiff
+Position: 3:30.0
+Duration: ~45 seconds
+Action: Enter AMD demo, show customer support with Sarah
+
+File: narration_segment_08.aiff
+Position: 4:15.0
+Duration: ~15 seconds
+Action: Final overview and closing
+
+Total Duration: 4:30
+Project End Time: 4:30.0

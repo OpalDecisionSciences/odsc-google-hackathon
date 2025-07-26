@@ -75,8 +75,14 @@ Our system implements the required agentic architecture:
 
 ```bash
 # Option 1: Docker (Recommended for Judges)
+# Set your API key in environment
+export GEMINI_API_KEY="your_api_key_here"
+
+# Build and run with API key
 docker build -t jeannine-jordan .
-docker run -p 7860:7860 jeannine-jordan
+docker run -p 7860:7860 -e GEMINI_API_KEY="$GEMINI_API_KEY" jeannine-jordan
+
+# Access demo at: http://localhost:7860
 
 # Option 2: Local Setup
 pip install -r requirements.txt
