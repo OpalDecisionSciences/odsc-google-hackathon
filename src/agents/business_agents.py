@@ -10,6 +10,7 @@ import asyncio
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 import uuid
+import logging
 
 from ..core.base_agent import BaseAgent, ManagerAgent, AgentRole, MessageType
 from ..core.memory_store import SmartMemoryMixin
@@ -23,6 +24,26 @@ try:
     from memory.persistent_memory import persistent_memory
 except ImportError:
     persistent_memory = None
+
+def safe_json_parse(response: str, fallback: Any = None) -> Any:
+    """Safely parse JSON response with robust error handling"""
+    if not response or response.strip() == "":
+        logging.warning("Empty response from Gemini, using fallback")
+        return fallback
+    
+    try:
+        # Clean response to ensure valid JSON
+        response = response.strip()
+        if response.startswith('```json'):
+            response = response.replace('```json', '').replace('```', '').strip()
+        
+        return json.loads(response)
+    except json.JSONDecodeError as e:
+        logging.error(f"JSON parsing failed: {e}. Response was: {response[:200] if response else 'No response'}")
+        return fallback
+    except Exception as e:
+        logging.error(f"Unexpected error in JSON parsing: {e}")
+        return fallback
 
 class CustomerSupportAgent(SmartMemoryMixin, BaseAgent):
     """24/7 Customer support specialist with intelligent inquiry routing and memory"""
@@ -151,16 +172,13 @@ class CustomerSupportAgent(SmartMemoryMixin, BaseAgent):
         """
         
         response = await self.use_gemini(prompt)
-        try:
-            return json.loads(response)
-        except:
-            return {
+        return safe_json_parse(response, {
                 "type": "general",
                 "urgency": "medium", 
                 "sentiment": "neutral",
                 "keywords": [],
                 "estimated_resolution_time": 30
-            }
+            })
     
     async def _generate_response(self, inquiry: str, classification: Dict, customer_id: str, customer_history: List = None, persistent_context: str = "") -> str:
         """Generate personalized customer response with persistent memory context"""

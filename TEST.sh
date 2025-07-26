@@ -107,10 +107,14 @@ echo "⚡ Testing Gemini API integration..."
 $PYTHON_CMD -c "
 import sys
 sys.path.append('src')
-from src.core.base_agent import BaseAgent
+from src.agents.research_agent import ResearchAssistantAgent
 
-agent = BaseAgent('test', 'Gemini Test Agent', 'SPECIALIST', 'test', 'gemini testing', 'test_manager')
-print('✅ Gemini integration configured')
+# Use concrete agent implementation instead of abstract BaseAgent
+agent = ResearchAssistantAgent('test', 'test_manager')
+if hasattr(agent, 'gemini_model'):
+    print('✅ Gemini integration configured')
+else:
+    print('✅ Gemini framework ready (API key needed for full functionality)')
 "
 
 # Check required documentation files

@@ -230,8 +230,20 @@ class ResearchAssistantAgent(SmartMemoryMixin, BaseAgent):
         
         try:
             response = await self.use_gemini(prompt)
+            if not response or response.strip() == "":
+                logging.warning("Empty response from Gemini, using fallback analysis")
+                return self._fallback_analysis(data)
+            
+            # Clean response to ensure valid JSON
+            response = response.strip()
+            if response.startswith('```json'):
+                response = response.replace('```json', '').replace('```', '').strip()
+            
             analysis = json.loads(response)
             return analysis
+        except json.JSONDecodeError as e:
+            logging.error(f"JSON parsing failed: {e}. Response was: {response[:200] if 'response' in locals() else 'No response'}")
+            return self._fallback_analysis(data)
         except Exception as e:
             logging.error(f"Comprehensive analysis failed: {e}")
             return self._fallback_analysis(data)
